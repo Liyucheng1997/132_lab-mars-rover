@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>火星车仿真 · Mars Rover Simulator</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">正在生成火星地表…</div>
+  </div>
+
+  <canvas id="scene"></canvas>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hidden">
+    <!-- Top-left mission status -->
+    <div class="panel" id="panel-status">
+      <div class="panel-title">任务状态</div>
+      <div class="row"><span>火星日 Sol</span><b id="t-sol">0</b></div>
+      <div class="row"><span>本地平太阳时</span><b id="t-lmst">00:00:00</b></div>
+      <div class="row"><span>模式</span><b id="t-mode">待机</b></div>
+      <div class="row"><span>速度</span><b id="t-speed">0.00 m/s</b></div>
+      <div class="row"><span>航向</span><b id="t-heading">0°</b></div>
+      <div class="row"><span>坡度</span><b id="t-slope">0°</b></div>
+      <div class="row"><span>里程</span><b id="t-odo">0.0 m</b></div>
+      <div class="row"><span>电源 (RTG)</span><b id="t-power">110 W</b></div>
+      <div class="row"><span>电池</span><b id="t-batt">100%</b></div>
+      <div class="row"><span>岩芯样本</span><b id="t-samples">0 / 38</b></div>
+      <div class="row"><span>地形数据</span><b id="t-terrain">—</b></div>
+    </div>
+
+    <!-- Top-right communications -->
+    <div class="panel" id="panel-comms">
+      <div class="panel-title">深空网络 DSN</div>
+      <div class="row"><span>链路</span><b id="c-link">DSN-14 Goldstone</b></div>
+      <div class="row"><span>频段</span><b>X 频段 · UHF 中继</b></div>
+      <div class="row"><span>单向光行时</span><b id="c-owlt">0 s</b></div>
+      <div class="row"><span>往返时延</span><b id="c-rtt">0 s</b></div>
+      <div class="row"><span>地火距离</span><b id="c-dist">0 km</b></div>
+      <div class="row"><span>数据率</span><b id="c-rate">2.0 Mbps</b></div>
+      <div class="row"><span>信号</span><b id="c-signal">●●●●●</b></div>
+      <div class="comm-log" id="comm-log"></div>
+    </div>
+
+    <!-- Bottom-left controls help -->
+    <div class="panel" id="panel-help">
+      <div class="panel-title">操作说明</div>
+      <div class="hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶与转向</div>
+      <div class="hint"><kbd>1</kbd>–<kbd>5</kbd> 切换相机视角</div>
+      <div class="hint"><kbd>点击</kbd> 设置导航航点</div>
+      <div class="hint"><kbd>G</kbd> 自主导航(路径规划)</div>
+      <div class="hint"><kbd>P</kbd> 钻探并缓存岩芯样本</div>
+      <div class="hint"><kbd>C</kbd> 拍摄 360° 全景</div>
+      <div class="hint"><kbd>M</kbd> 展开 / 收纳桅杆</div>
+      <div class="hint"><kbd>R</kbd> 复位跟随机位 · <kbd>2</kbd> 自由视角</div>
+      <div class="hint"><kbd>H</kbd> 显示 / 隐藏 HUD</div>
+    </div>
+
+    <!-- Bottom-right camera label + minimap -->
+    <div class="panel" id="panel-cam">
+      <div class="panel-title">相机</div>
+      <div class="row"><span>当前视角</span><b id="cam-name">跟随视角</b></div>
+      <canvas id="minimap" width="180" height="180"></canvas>
+      <div class="map-controls">
+        <button id="map-local" class="map-btn active">本地导航</button>
+        <button id="map-global" class="map-btn">全球火星</button>
+        <span id="map-zoom">×1</span>
+      </div>
+      <div class="hint" style="text-align:center">点击地图设航点 · 滚轮缩放 · <kbd>N</kbd> 切换</div>
+    </div>
+
+    <!-- Center crosshair for first-person cams -->
+    <div id="crosshair" class="hidden">+</div>
+    <div id="cam-overlay" class="hidden"></div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="hidden"></div>
+
+    <!-- 360° panorama viewer -->
+    <div id="pano" class="hidden">
+      <div class="pano-title">MASTCAM-Z 360° 全景 · 杰泽罗撞击坑</div>
+      <canvas id="pano-canvas" width="2160" height="240"></canvas>
+      <div class="pano-close">点击关闭</div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

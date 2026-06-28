@@ -1,0 +1,12 @@
+{
+  "image": "mars_global.png",
+  "width": 1440,
+  "height": 720,
+  "lonMinDeg": 0.0,
+  "lonMaxDeg": 360.0,
+  "latMaxDeg": 90.0,
+  "latMinDeg": -90.0,
+  "landingLatDeg": 18.38,
+  "landingLonDeg": 77.58,
+  "source": "NASA PDS MGS-M-MOLA-5-MEGDR meg004 (4 px/deg global)"
+}

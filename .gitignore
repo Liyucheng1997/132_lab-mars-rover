@@ -1,0 +1,17 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# Node (not used at runtime, but in case tooling is added)
+node_modules/
+npm-debug.log*
+
+# Raw MOLA source downloads (regenerate via scripts/) — keep the small PNGs only
+*.bin
+scratch_band.bin
+mars_global.bin
+
+# Logs
+*.log

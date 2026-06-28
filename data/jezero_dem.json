@@ -1,0 +1,15 @@
+{
+  "image": "jezero_dem.png",
+  "encoding": "rg16",
+  "range": 90.0,
+  "vScale": 1.0,
+  "label": "MOLA MEGDR (Jezero)",
+  "source": "NASA PDS MGS-M-MOLA-5-MEGDR-L3-V1 meg128 / tile megt44n000hb",
+  "trueMinElevM": -4435.0,
+  "trueMaxElevM": 756.0,
+  "metersPerPixel": 463.0,
+  "centerLatDeg": 18.383,
+  "centerLonDeg": 77.578,
+  "widthPx": 640,
+  "heightPx": 640
+}
