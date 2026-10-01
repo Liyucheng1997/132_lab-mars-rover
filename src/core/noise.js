@@ -1,7 +1,7 @@
 // Deterministic gradient (Perlin-style) noise + fractal Brownian motion.
 // Self-contained, no dependencies, so terrain is reproducible from a seed.
 
-function mulberry32(seed) {
+export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
     a |= 0; a = (a + 0x6d2b79f5) | 0;
@@ -74,3 +74,61 @@ export class Noise {
     return sum;
   }
 }
+
+// ---------- 3D gradient noise (rock shapes) ----------
+const G3 = [
+  [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [1, 0, 1], [-1, 0, 1],
+  [1, 0, -1], [-1, 0, -1], [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1],
+];
+Noise.prototype.noise3 = function (x, y, z) {
+  const p = this.perm;
+  const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+  x -= X; y -= Y; z -= Z;
+  const xi = X & 255, yi = Y & 255, zi = Z & 255;
+  const f = this._fade;
+  const u = f(x), v = f(y), w = f(z);
+  const g = (ix, iy, iz, dx, dy, dz) => {
+    const gr = G3[p[(p[(p[(xi + ix) & 255] + yi + iy) & 255] + zi + iz) & 255] % 12];
+    return gr[0] * dx + gr[1] * dy + gr[2] * dz;
+  };
+  const l = this._lerp;
+  return l(
+    l(l(g(0, 0, 0, x, y, z), g(1, 0, 0, x - 1, y, z), u), l(g(0, 1, 0, x, y - 1, z), g(1, 1, 0, x - 1, y - 1, z), u), v),
+    l(l(g(0, 0, 1, x, y, z - 1), g(1, 0, 1, x - 1, y, z - 1), u), l(g(0, 1, 1, x, y - 1, z - 1), g(1, 1, 1, x - 1, y - 1, z - 1), u), v),
+    w
+  );
+};
+
+Noise.prototype.fbm3 = function (x, y, z, octaves = 4) {
+  let amp = 0.5, freq = 1, sum = 0, norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    sum += amp * this.noise3(x * freq, y * freq, z * freq);
+    norm += amp; amp *= 0.5; freq *= 2;
+  }
+  return sum / norm;
+};
+
+// ---------- Periodic 2D noise (seamless tiling textures) ----------
+// Lattice wraps every `period` cells so a [0, period) square tiles exactly.
+Noise.prototype.noise2p = function (x, y, period) {
+  const X = Math.floor(x), Y = Math.floor(y);
+  x -= X; y -= Y;
+  const m = (a) => ((a % period) + period) % period;
+  const p = this.perm;
+  const h = (ix, iy) => p[(p[m(X + ix) & 255] + m(Y + iy)) & 255];
+  const u = this._fade(x), v = this._fade(y);
+  return this._lerp(
+    this._lerp(this._grad(h(0, 0), x, y), this._grad(h(1, 0), x - 1, y), u),
+    this._lerp(this._grad(h(0, 1), x, y - 1), this._grad(h(1, 1), x - 1, y - 1), u),
+    v
+  ) * 0.7;
+};
+
+Noise.prototype.fbm2p = function (x, y, period, octaves = 5) {
+  let amp = 0.5, freq = 1, sum = 0, norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    sum += amp * this.noise2p(x * freq, y * freq, period * freq);
+    norm += amp; amp *= 0.5; freq *= 2;
+  }
+  return sum / norm;
+};

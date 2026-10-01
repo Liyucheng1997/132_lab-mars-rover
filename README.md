@@ -1,159 +1,182 @@
-# 火星车仿真 · Mars Rover Simulator (Three.js)
+# 火星车工程仿真 · Mars Rover Engineering Simulator
 
-A browser-based simulation of a NASA Perseverance-class Mars rover, built with
-[Three.js](https://threejs.org). It reproduces the rover hardware, terrain
-following, onboard cameras, autonomous navigation/path-planning, and the
-Earth–Mars deep-space communication chain.
-
-![views](docs/preview.png)
+A browser-based engineering simulator of a NASA Perseverance-class rover at
+Jezero Crater, built on [Three.js](https://threejs.org) with no build step.
+Version 2 replaces the v1 "game" models with physically based ones: real Mars
+time and ephemerides, true-scale georeferenced terrain, rocker-bogie
+kinematics, Bekker–Wong terramechanics, arm inverse kinematics, a dust-
+scattering atmosphere, and an AutoNav stack with global and local planners.
+The physics and world models are covered by an automated test suite.
 
 ## 运行 / Running
 
-The project is pure static files using an ES-module **import map** (Three.js is
-loaded from a CDN), so it needs to be served over HTTP — opening `index.html`
-directly via `file://` will not work.
-
 ```bash
-# from the project root
-python -m http.server 8124
-# then open http://localhost:8124
+python scripts/serve.py 8124      # static server with caching disabled
+# open http://localhost:8124
 ```
 
-Any static server works (`npx serve`, VS Code "Live Server", etc.). An internet
-connection is required the first time so the browser can fetch Three.js from
-unpkg.
+The page loads Three.js 0.160 from unpkg through an import map, so it needs an
+HTTP server (not `file://`) and network access on first load. Any static
+server works; `scripts/serve.py` only adds `Cache-Control: no-store` so edits
+to ES modules show up immediately.
+
+```bash
+npm test                          # node --test, no dependencies
+```
+
+URL parameters: `?utc=2021-02-18T20:43:49Z` starts at a specific instant
+(default: now, moved to the next 09:30 LMST if it is night at Jezero);
+`?warp=200` sets the initial time warp.
 
 ## 操作 / Controls
 
 | Key | Action |
 | --- | --- |
-| `W` `A` `S` `D` / arrows | Drive & steer (Ackermann + point-turn) |
-| `Click` on terrain | Set a navigation waypoint |
-| `G` | Engage / disengage **AutoNav** (drives to the waypoint, avoiding hazards) |
-| `P` | **Drill** & cache a core sample (rover must be stopped) |
-| `C` | Capture a **360° MastCam-Z panorama** |
-| `1`–`5` | Camera views: Chase · Orbit · NavCam · HazCam · MastCam-Z |
-| `M` | Deploy / stow the remote sensing mast |
-| `R` | Recenter the chase camera |
-| `H` | Toggle the HUD |
+| `W` `S` | Drive forward / reverse (4.2 cm/s × time warp) |
+| `A` `D` | Ackermann arc; held alone = turn in place |
+| `Q` `E` | Turn in place left / right |
+| `Space` | All stop |
+| Click terrain / minimap | Set a goal; the A* strategic route is planned immediately |
+| `G` / `X` | Engage/disengage AutoNav / clear the goal |
+| `P` | Coring sequence (arm IK → preload → core → retract → stow → seal) |
+| `C` | Mastcam-Z 360° panorama sequence (mosaic of 12 rendered frames) |
+| `M`, `I` `J` `K` `L` | Stow/deploy mast; tilt/pan the remote-sensing mast |
+| `1`–`6` | Chase · free orbit · NavCam · front HazCam · Mastcam-Z · rear HazCam |
+| `+` `-` / wheel | Mastcam-Z zoom, 26–110 mm |
+| `[` `]` | Time warp ×1 … ×5000 |
+| `T` | Skip to 09:00 LMST on the next sol |
+| `L` | Light-time mode: commands from "Earth" execute after the real one-way light time |
+| `B` / `V` | Clear a fault-protection stop / toggle planner-arc display |
+| `N` `R` `H` `F1` | Map mode · reset camera · HUD · help |
 
-Press **`2`** for the **free orbit** camera: **drag** to rotate, **scroll** to
-zoom. (A short click still drops a waypoint; only a drag moves the camera, so the
-two no longer conflict.)
+## 模型 / What is modelled
 
-## 真实还原的内容 / What is modelled on the real mission
+### Time and sky geometry — `src/physics/marsTime.js`, `ephemeris.js`
+* **Mars24** (Allison & McEwen 2000): MSD, MST/LMST/LTST, Ls, equation of time,
+  solar declination, mission sol numbering from the landing epoch, Mars Year.
+  Reproduces the paper's worked example to 2×10⁻⁴°.
+* An **independent** solar-system chain (JPL Keplerian elements → IAU 2009
+  Mars pole and prime-meridian rotation → local ENU) gives the Sun, Earth,
+  Phobos, Deimos and relay orbiters. Its Sun direction agrees with Mars24 to
+  < 0.3°, which the tests check across 2021–2025.
+* The landing instant (2021-02-18 20:43:49 UTC SCET) comes out at 15:53 LMST,
+  Ls 5.6°, matching the published values.
 
-**Rover (`src/rover.js`)** — Perseverance layout: 6-wheel **rocker-bogie**
-suspension with terrain-following compliance, steerable corner wheels (rear
-wheels counter-steer for tighter turns), grousered wheels, the Warm Electronics
-Box chassis with gold thermal trim, the **Remote Sensing Mast** with Mastcam-Z /
-SuperCam apertures, a stowable **robotic arm** with turret, the **MMRTG** power
-source with cooling fins, **High-Gain (X-band)** and **UHF relay** antennas, and
-a stowed **Ingenuity** helicopter.
+### Terrain — `src/world/`
+* **Far field:** the bundled MOLA MEGDR crop at true scale over ±60 km with
+  planetary curvature (the horizon from mast height is about 3.7 km away).
+  The Jezero rim and western delta stand on the horizon where they really are.
+  The site's elevation decodes to −2571 m; the published value is −2569 m.
+* **Near field:** 1 km × 1 km at 0.5 m post spacing, synthesised in a Web
+  Worker from layers:
+  * the MOLA macro surface;
+  * fBm undulation;
+  * a crater population with N(>D) ∝ D⁻², Pike simple-crater morphometry and
+    per-crater degradation from fresh to sand-filled;
+  * transverse aeolian ridges in sand patches;
+  * terraced bedrock outcrops.
+  A material map (bedrock / sand / albedo / ejecta) drives rendering, rock
+  abundance and the soil the wheels drive on, so all three always agree.
+* Chunked LOD (four levels, crack-free skirts) and a custom PBR terrain
+  shader: unit blending, slope-exposed bedrock, two-scale anti-tiling detail
+  normals, and wheel tracks with grouser imprints.
+* **Rocks:** Golombek & Rapp (1997) abundance model F_k(D) = k·e^(−q(k)D).
+  Rocks are generated per chunk from a seed, with abundance raised on fresh
+  ejecta and outcrops. They are drawn from 10 procedural shape families with
+  dust on their top faces, and each rock is also a physical ellipsoid that
+  the wheels climb.
 
-**Terrain (`src/mars.js`)** — a Jezero-Crater-inspired surface: raised crater
-rim, central bowl, an ancient river **delta** (Perseverance's actual science
-target), aeolian ripples, scattered rocks, elevation/slope-based regolith
-colouring, and a butterscotch dust sky. The height field is analytic, so the
-rover queries the exact surface it is driving on.
+### Atmosphere — `src/world/sky.js`, `src/physics/environment.js`
+* The sky uses single-scattering plus approximate multiple scattering from
+  dust, with wavelength-dependent albedo and Henyey–Greenstein asymmetry.
+  The butterscotch daytime sky and the **blue sunset aureole** both come out
+  of the same equations. Scene sunlight, skylight and fog are computed on the
+  CPU from the same model.
+* The night sky has a star field rotating about the Martian pole, plus Earth,
+  Phobos and Deimos at their computed positions, drawn with phase lighting.
+* The MEDA-like environment model covers air and ground temperature,
+  pressure (CO₂ cycle and tides), wind, dust optical depth τ (dust season and
+  regional events) and surface irradiance.
 
-**Planning (`src/planning.js`)** — an AutoNav-style local planner: it casts a
-fan of candidate steering **arcs**, scores each by terrain hazard (slope +
-roughness + **boulder proximity** + out-of-bounds), and follows the safest arc
-that makes progress to the goal — the same idea as the flight software's
-GESTALT/ENav. Blocked paths trigger a back-up-and-replan. Candidate arcs are
-drawn live (green = safe, red = hazard, blue = chosen).
+### Vehicle — `src/rover/`, `src/physics/`
+* **Geometry:** the warm electronics box and deck, RSM mast (Mastcam-Z
+  24.2 cm baseline, NavCams, SuperCam aperture, MEDA booms) on deploy, azimuth
+  and elevation joints, a 5-DOF arm with a turret (coring drill, PIXL,
+  SHERLOC/WATSON, GDRTT), the bit carousel, MMRTG with heat-rejection panels,
+  a gimballed hexagonal HGA that tracks Earth, a UHF helix and front/rear
+  HazCams. Dust builds up on the rover as sols pass.
+* **Wheels:** 52.5 cm machined drums with 48 curved grousers, six curved
+  titanium flexure spokes and hub motors.
+* **Rocker-bogie** (`rockerBogie.js`): a planar rim-contact solve per side
+  and the differential coupling (pitch = mean rocker angle), with the
+  differential bar and links animated to match. Static wheel loads and
+  lateral load transfer give a stability margin.
+* **Terramechanics** (`terramechanics.js`): Bekker pressure–sinkage,
+  slip-sinkage, compaction resistance and Janosi–Hanamoto shear. Per-wheel
+  loads and soils give a vehicle slip from a bisection solve. Tuning:
+  regolith ≈ 20 % slip at 20°; loose sand immobilises the rover past ~15°.
+* **Mobility FSW** (`vehicle.js`): Ackermann arcs about the mid-wheel axle,
+  turn-in-place, slew-limited steering actuators and wheel odometry vs. VO.
+  Fault protection stops the rover on excess tilt, slip, immobilisation or a
+  low stability margin.
+* **Arm** (`armKinematics.js`): closed-form IK puts the drill normal to the
+  surface. Joints slew at a realistic rate.
+* **Power** (`power.js`): MMRTG decay since launch, a 2×43 Ah battery and a
+  per-subsystem load table that includes heaters driven by air temperature.
 
-**Obstacles & collision (`src/mars.js`)** — large boulders are registered as
-physical obstacles in a spatial hash. The driving model pushes the rover out of
-any rock it contacts (no more clipping through them) and bleeds off momentum on
-impact, while the planner gives boulders a body-width berth.
+### Navigation & operations — `src/nav/`, `src/ops/`
+* **Strategic:** A* over an "orbital" cost map built from slope, roughness
+  and sand. As with HiRISE planning, rocks below map resolution are not in
+  it. The path is string-pulled.
+* **Tactical (ENav-style):** at each 0.5 m step the planner scores 13
+  curvature arcs against a rover-footprint model (rock height above the
+  35 cm threshold, tilt, roughness, sand) and follows a pure-pursuit carrot
+  on the route. It turns in place when the heading error is large, and backs
+  up and replans after repeated blockage.
+* **Telecom:** DTE needs Earth above the local horizon, a DSN complex
+  (Goldstone / Madrid / Canberra) with Mars above its horizon, and no solar
+  conjunction. UHF relay passes of MRO, Odyssey (sun-synchronous), TGO and
+  MAVEN are predicted from their orbits. A data buffer fills from activities
+  and drains over whichever link is up. In light-time mode, commands are
+  delayed by the real one-way light time.
 
-**Mission tasks (`src/main.js`)** —
-- **Sample caching** (`P`): the robotic arm deploys and drills; after the coring
-  sequence a borehole is left in the regolith and a sealed sample tube is added
-  to the cache (mirroring Perseverance's 38-tube sample-return campaign).
-- **360° panorama** (`C`): a render-to-texture mosaic — the MastCam-Z camera is
-  swept through 12 azimuths, each frame read back and stitched into a panoramic
-  strip, exactly how the real mosaics are assembled from individual frames.
-
-**Cameras (`src/cameras.js`)** — chase, free orbit, and three onboard cameras
-mounted at their real locations with representative fields of view (NavCam 45°,
-wide HazCam 105°, telephoto MastCam-Z 18°).
-
-**Communications (`src/comms.js`)** — computes the real Earth–Mars geometry from
-simplified heliocentric orbits to derive the **one-way light time** (≈3–22 min)
-and round-trip delay, rotates through the **Deep Space Network** stations
-(Goldstone / Madrid / Canberra), models UHF relay via orbiters (MRO, Odyssey,
-MAVEN, TGO), and streams delayed telemetry into the comms log. Commands you
-issue are acknowledged with the current light-time delay.
-
-The HUD also runs a **Mars Sol clock** (a sol = 24h 39m 35s) with Local Mean
-Solar Time, plus speed, heading, slope, odometer, and power/battery readouts,
-and a top-down **navigation minimap** with hazard shading.
-
-## 结构 / Project layout
+## 结构 / Layout
 
 ```
-index.html        # HUD markup + import map
-styles.css        # HUD / mission-control styling
 src/
-  main.js         # orchestrator: scene, lighting, driving model, HUD, loop
-  mars.js         # analytic Mars terrain + rocks + sky
-  rover.js        # Perseverance-class rover model + rocker-bogie suspension
-  cameras.js      # chase / orbit / onboard camera rig
-  controls.js     # keyboard + pointer input
-  planning.js     # AutoNav arc-voting hazard-avoidance planner
-  comms.js        # Earth–Mars light-time + DSN telemetry
-  ui.js           # minimap + HUD helpers
-  noise.js        # Perlin/fBm terrain noise
-  dem.js          # real MOLA DEM loader + bilinear sampler
-data/
-  jezero_dem.png  # real NASA MOLA elevation (Jezero), RG16-encoded
-  jezero_dem.json # DEM metadata
-scripts/
-  convert_dem.py  # MOLA MEGDR → heightmap converter
+  main.js                orchestration: boot, time-warp clock, fixed-step physics, sequences, HUD
+  core/                  constants (vehicle spec, site, DSN, orbiters), math, noise
+  physics/               marsTime, ephemeris, rockerBogie, terramechanics, armKinematics,
+                         environment, power      ← pure modules, unit-tested in Node
+  world/                 geo (georef + DEM), terrainGen (+ worker), terrain (LOD), rocks/rockGen,
+                         sky, tracks, particles, textures, terrainMaterial, demLoader
+  rover/                 rover (geometry + articulation), vehicle (mobility), roverMaterials
+  nav/                   globalPlanner (A*), autonav (ENav)
+  ops/                   telecom
+  cameras.js controls.js ui.js
+tests/                   physics.test.js, world.test.js (node --test)
+data/                    MOLA MEGDR Jezero crop (RG16 PNG + georef JSON), MOLA global map
+scripts/                 convert_dem.py, make_global_map.py, serve.py
 ```
 
-## 备注 / Notes
+## 备注 / Notes and limitations
 
-- Driving speed is sped up for interactivity (~2.4 m/s sim vs. Perseverance's
-  real ~0.042 m/s).
-- The vertical relief of the real DEM is compressed (~90 m across the height
-  span) so the 600 m sandbox is drivable — the same scaling logic the procedural
-  Jezero already used. The true elevation range (−4435 … 756 m) is recorded in
-  `data/jezero_dem.json`.
+* Speeds are true to the hardware (4.2 cm/s), so use the time warp. Physics
+  runs on a fixed 0.1 s step; above ~50 sub-steps per frame the step grows.
+* Dimensions not published by NASA (suspension link geometry, wheel width,
+  component placement) are estimated from scaled imagery and marked `est` in
+  `src/core/constants.js`.
+* Moon and orbiter positions use real periods and geometry but
+  representative phases, so they are not ephemeris-accurate.
+* Terrain within 1 km is synthesised. Real HiRISE DTMs (1 m) could replace
+  the synthetic near field through the same `generateNearField` interface.
 
-## 真实火星 DEM 数据 / Real Mars elevation data
+## 数据来源 / Data credits
 
-The terrain is driven by **real NASA MOLA elevation data** for Jezero Crater,
-bundled in `data/`:
-
-- `data/jezero_dem.png` — a 640×640 heightmap (16-bit elevation packed into the
-  R+G channels), centred on **18.38 °N, 77.58 °E** (Perseverance's landing site).
-- `data/jezero_dem.json` — metadata (encoding, elevation range, pixel scale,
-  source product) read by `src/dem.js`.
-
-It is cropped from the **Mars Global Surveyor MOLA MEGDR** product
-(`meg128`, 128 px/° ≈ 463 m/px), tile `megt44n000hb`, hosted by NASA PDS at
-Washington University St. Louis. `src/dem.js` loads it, bilinearly samples it,
-and `MarsTerrain` builds the mesh from it. If the files are absent the sim falls
-back to the procedural Jezero automatically.
-
-### Regenerating from source
-
-```bash
-# 1. download just the Jezero latitude band (~14 MB) via an HTTP range request
-BASE=https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/meg128/megt44n000hb.img
-curl -r $((2959*23040))-$((3599*23040-1)) "$BASE" -o band.bin
-
-# 2. crop + encode to data/jezero_dem.png + .json  (needs numpy + Pillow)
-python scripts/convert_dem.py band.bin
-```
-
-To target a **different site** (e.g. Gale Crater for Curiosity), change the
-tile, `ROW_START`, and `COL_START` in `scripts/convert_dem.py` to the desired
-latitude/longitude window and re-run.
-
-> Data credit: NASA / JPL / GSFC — MGS MOLA Science Team (MEGDR, CC-attribution
-> via the Jaanga Mars project).
+* MOLA MEGDR elevation: NASA / JPL / GSFC — MGS MOLA Science Team (PDS
+  Geosciences Node). Regenerate with `scripts/convert_dem.py` (see its
+  docstring for the HTTP range request).
+* References: Allison & McEwen (2000) *Planet. Space Sci.* 48; Archinal et al.
+  (2011) IAU WGCCRE report; Standish, *Keplerian Elements for Approximate
+  Positions of the Major Planets*; Golombek & Rapp (1997) *JGR* 102; Pike
+  (1977); Bekker (1969); Wong, *Theory of Ground Vehicles*; Mars 2020 press kit.

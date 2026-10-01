@@ -26,11 +26,6 @@ BAND_ROWS = 640
 COL_START = 9610            # Jezero lon window start (col)
 COL_W = 640
 
-# Gameplay vertical relief (metres) the full height span maps to in-sim.
-# Real Jezero relief over this 5-deg window is ~2-3 km; compressed here so the
-# rover sandbox is drivable, exactly as the procedural Jezero is scaled down.
-GAMEPLAY_RELIEF_M = 90.0
-
 
 def main(band_path):
     raw = np.fromfile(band_path, dtype=">i2")          # big-endian int16
@@ -59,8 +54,6 @@ def main(band_path):
     meta = {
         "image": "jezero_dem.png",
         "encoding": "rg16",
-        "range": GAMEPLAY_RELIEF_M,
-        "vScale": 1.0,
         "label": "MOLA MEGDR (Jezero)",
         "source": "NASA PDS MGS-M-MOLA-5-MEGDR-L3-V1 meg128 / tile megt44n000hb",
         "trueMinElevM": round(true_min, 1),
@@ -70,6 +63,12 @@ def main(band_path):
         "centerLonDeg": round(center_lon, 3),
         "widthPx": int(crop.shape[1]),
         "heightPx": int(crop.shape[0]),
+        # georeferencing read by src/world/geo.js (true scale, no exaggeration)
+        "ppd": PPD,
+        "latTopDeg": TILE_MAX_LAT - ROW_START / PPD,
+        "lonLeftDeg": COL_START / PPD,
+        "note": "Pixel (row, col) centre: lat = latTopDeg - (row + 0.5)/ppd, lon = lonLeftDeg + (col + 0.5)/ppd. "
+                "Values decode as trueMinElevM + v * (trueMaxElevM - trueMinElevM).",
     }
     with open(os.path.join(DATA, "jezero_dem.json"), "w") as f:
         json.dump(meta, f, indent=2)

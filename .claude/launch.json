@@ -4,7 +4,7 @@
     {
       "name": "mars-rover",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8124"],
+      "runtimeArgs": ["scripts/serve.py", "8124"],
       "port": 8124
     }
   ]
