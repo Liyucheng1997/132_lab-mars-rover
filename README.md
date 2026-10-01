@@ -2,7 +2,7 @@
 
 A browser-based engineering simulator of a NASA Perseverance-class rover at
 Jezero Crater, built on [Three.js](https://threejs.org) with no build step.
-Version 2 replaces the v1 "game" models with physically based ones: real Mars
+Version 1.1 replaces the v1.0 "game" models with physically based ones: real Mars
 time and ephemerides, true-scale georeferenced terrain, rocker-bogie
 kinematics, Bekker–Wong terramechanics, arm inverse kinematics, a dust-
 scattering atmosphere, and an AutoNav stack with global and local planners.
